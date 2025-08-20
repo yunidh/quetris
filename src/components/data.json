@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "question": "What is the capital of France?",
+    "options": ["Berlin", "Madrid", "Paris", "Rome"],
+    "answer": "Paris"
+  },
+  {
+    "id": 2,
+    "question": "What is the largest planet in our solar system?",
+    "options": ["Earth", "Jupiter", "Mars", "Saturn"],
+    "answer": "Jupiter"
+  },
+  {
+    "id": 3,
+    "question": "17*2?",
+    "options": ["34", "32", "36", "38"],
+    "answer": "34"
+  }
+]
