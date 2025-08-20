@@ -48,24 +48,8 @@ interface QuizCarouselProps {
   isLoading?: boolean; // External loading state
 }
 
-export default function QuizCarousel({
-  quizData,
-  onLevelComplete,
-  onQuestionAnswer,
-  isLoading: externalLoading = false,
-}: QuizCarouselProps) {
-  // Validate data and use directly (no need for memoization of simple prop)
-  if (!quizData?.levels?.length) {
-    return (
-      <div className="flex flex-col items-center justify-center text-center">
-        <p className="text-red-400 mb-4">No quiz data available</p>
-        <p className="text-white text-sm">
-          Please check your database connection
-        </p>
-      </div>
-    );
-  }
-
+export default function QuizCarousel({ quizData }: QuizCarouselProps) {
+  // All hooks must be declared before any conditional returns
   const [started, setStarted] = useState(false);
   const [currentLevel, setCurrentLevel] = useState(0);
   const [questionIdx, setQuestionIdx] = useState(0);
@@ -141,118 +125,79 @@ export default function QuizCarousel({
     if (cleanupIntervalRef.current) clearInterval(cleanupIntervalRef.current);
   }, []);
 
-  // Handle correct/incorrect answers with callback
-  const handleAnswer = useCallback(
-    (correct: boolean) => {
-      if (!currentQuestion) return;
-
-      // Track that a question was attempted
-      setQuestionsAttempted((prev) => prev + 1);
-
-      // Call external callback if provided
-      onQuestionAnswer?.(currentQuestion.id, correct);
-
-      if (correct) {
-        setScore((prev) => prev + 1);
-
-        // Check if this is the last question
-        if (questionIdx === currentLevelData!.questions.length - 1) {
-          setCompleted(true);
-          // Call level completion callback
-          onLevelComplete?.(currentLevel, score + 1);
-        } else {
-          setQuestionIdx((prev) => prev + 1);
-          resetFallingOptions();
-        }
-      } else {
-        // Wrong answer - go back to level select and reset everything
-        setStarted(false);
-        resetGame(true); // Keep score to show on level select
-      }
-    },
-    [
-      currentQuestion,
-      currentLevelData,
-      questionIdx,
-      currentLevel,
-      score,
-      onQuestionAnswer,
-      onLevelComplete,
-      resetGame,
-      resetFallingOptions,
-    ]
-  );
-
   // Shuffle array utility
-  const shuffle = (array: number[]) => {
+  const shuffle = useCallback((array: number[]) => {
     const shuffled = [...array];
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
     return shuffled;
-  };
+  }, []);
 
   // Utility to create new falling options
-  const createFallingOptions = (
-    qIdx: number,
-    levelIdx: number
-  ): FallingOption[] => {
-    const availableColumns = shuffle(
-      Array.from({ length: GRID_COLS }, (_, i) => i)
-    );
-    return quizData.levels[levelIdx].questions[qIdx].options.map(
-      (opt: string, index: number) => ({
-        text: opt,
-        col: availableColumns[index],
-        row: 0,
-        key: `${levelIdx}-${qIdx}-${opt}-${Date.now()}-${index}`,
-      })
-    );
-  };
+  const createFallingOptions = useCallback(
+    (qIdx: number, levelIdx: number): FallingOption[] => {
+      const availableColumns = shuffle(
+        Array.from({ length: GRID_COLS }, (_, i) => i)
+      );
+      return quizData.levels[levelIdx].questions[qIdx].options.map(
+        (opt: string, index: number) => ({
+          text: opt,
+          col: availableColumns[index],
+          row: 0,
+          key: `${levelIdx}-${qIdx}-${opt}-${Date.now()}-${index}`,
+        })
+      );
+    },
+    [quizData.levels, shuffle]
+  );
 
   // Unified function to load options with different behaviors
-  const loadOptions = async (
-    qIdx: number,
-    levelIdx: number,
-    isFirstQuestion = false
-  ): Promise<void> => {
-    if (isFirstQuestion) {
-      setIsLoading(true);
-      setShowGrid(false);
-    }
-    setCanStartFalling(false);
-    setFallingOptions([]);
-
-    return new Promise<void>((resolve) => {
-      const updateOptions = () => {
-        const newOptions = createFallingOptions(qIdx, levelIdx);
-        setFallingOptions(newOptions);
-
-        requestAnimationFrame(() => {
-          if (isFirstQuestion) {
-            setIsLoading(false);
-            setShowGrid(true);
-            setGridAnimating(true);
-            setTimeout(() => {
-              setGridAnimating(false);
-              setCanStartFalling(true);
-            }, 500);
-          } else {
-            setCanStartFalling(true);
-          }
-          resolve();
-        });
-      };
-
-      // Use double RAF only for complex state changes, single RAF for simple ones
+  const loadOptions = useCallback(
+    async (
+      qIdx: number,
+      levelIdx: number,
+      isFirstQuestion = false
+    ): Promise<void> => {
       if (isFirstQuestion) {
-        requestAnimationFrame(() => requestAnimationFrame(updateOptions));
-      } else {
-        requestAnimationFrame(updateOptions);
+        setIsLoading(true);
+        setShowGrid(false);
       }
-    });
-  };
+      setCanStartFalling(false);
+      setFallingOptions([]);
+
+      return new Promise<void>((resolve) => {
+        const updateOptions = () => {
+          const newOptions = createFallingOptions(qIdx, levelIdx);
+          setFallingOptions(newOptions);
+
+          requestAnimationFrame(() => {
+            if (isFirstQuestion) {
+              setIsLoading(false);
+              setShowGrid(true);
+              setGridAnimating(true);
+              setTimeout(() => {
+                setGridAnimating(false);
+                setCanStartFalling(true);
+              }, 500);
+            } else {
+              setCanStartFalling(true);
+            }
+            resolve();
+          });
+        };
+
+        // Use double RAF only for complex state changes, single RAF for simple ones
+        if (isFirstQuestion) {
+          requestAnimationFrame(() => requestAnimationFrame(updateOptions));
+        } else {
+          requestAnimationFrame(updateOptions);
+        }
+      });
+    },
+    [createFallingOptions]
+  );
 
   // Clear options when level changes or game exits
   useEffect(() => {
@@ -266,7 +211,7 @@ export default function QuizCarousel({
     setStarted(true);
     resetGame();
     await loadOptions(0, currentLevel, true); // First question gets animation
-  }, [currentLevel, resetGame]);
+  }, [currentLevel, resetGame, loadOptions]);
 
   // Level navigation functions
   const goToPrevLevel = useCallback(() => {
@@ -378,7 +323,13 @@ export default function QuizCarousel({
       // All questions completed
       setCompleted(true);
     }
-  }, [questionIdx, currentLevel, resetFallingOptions]);
+  }, [
+    questionIdx,
+    currentLevel,
+    resetFallingOptions,
+    loadOptions,
+    quizData.levels,
+  ]);
 
   const goBackToLevelSelect = useCallback(() => {
     setStarted(false);
@@ -396,9 +347,17 @@ export default function QuizCarousel({
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Enter") {
-        if (!started) startQuiz();
-        else if (completed) goBackToLevelSelect();
-        else if (caught) caught.correct ? nextQuestion() : retryQuestion();
+        if (!started) {
+          void startQuiz();
+        } else if (completed) {
+          goBackToLevelSelect();
+        } else if (caught) {
+          if (caught.correct) {
+            void nextQuestion();
+          } else {
+            void retryQuestion();
+          }
+        }
       } else if (e.key === "Escape" && started) {
         setStarted(false);
         resetGame();
@@ -431,6 +390,18 @@ export default function QuizCarousel({
     goBackToLevelSelect,
     dropOptions,
   ]);
+
+  // Validate data and use directly (now after all hooks)
+  if (!quizData?.levels?.length) {
+    return (
+      <div className="flex flex-col items-center justify-center text-center">
+        <p className="text-red-400 mb-4">No quiz data available</p>
+        <p className="text-white text-sm">
+          Please check your database connection
+        </p>
+      </div>
+    );
+  }
 
   // Render grid
   return (
@@ -489,7 +460,7 @@ export default function QuizCarousel({
 
           <button
             className="bg-black text-white px-8 py-3 rounded font-code text-2xl shadow border-2 border-white"
-            onClick={startQuiz}
+            onClick={() => void startQuiz()}
             disabled={isLoading}
           >
             {isLoading ? "Loading..." : "Play"}
@@ -502,7 +473,7 @@ export default function QuizCarousel({
               Completed!
             </h2>
             <p className="text-white text-lg mb-4">
-              You've finished all questions in{" "}
+              You&apos;ve finished all questions in{" "}
               {quizData.levels[currentLevel].title}!
             </p>
             <div className="text-white text-xl mb-6 font-bold">
@@ -640,7 +611,7 @@ export default function QuizCarousel({
                 <button
                   className="absolute bg-red-600 text-white px-4 py-2 rounded font-code transform -translate-x-1/2 -translate-y-1/2"
                   style={{ left: "50%", top: "50%", zIndex: 10 }}
-                  onClick={retryQuestion}
+                  onClick={() => void retryQuestion()}
                   disabled={isLoading}
                 >
                   {isLoading ? "Loading..." : "Restart"}
@@ -650,7 +621,7 @@ export default function QuizCarousel({
                 <button
                   className="absolute bg-green-600 text-white px-4 py-2 rounded font-code transform -translate-x-1/2 -translate-y-1/2"
                   style={{ left: "50%", top: "50%", zIndex: 10 }}
-                  onClick={nextQuestion}
+                  onClick={() => void nextQuestion()}
                   disabled={isLoading}
                 >
                   {isLoading ? "Loading..." : "Next Question"}
