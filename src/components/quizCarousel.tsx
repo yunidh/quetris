@@ -56,6 +56,7 @@ export default function QuizCarousel({
   onQuestionAnswer,
   isLoading: externalLoading = false,
 }: QuizCarouselProps = {}) {
+  console.log(supabase);
   // Use external data if provided, otherwise fall back to local data
   const gameData = useMemo(() => quizData || (data as QuizData), [quizData]);
 
@@ -419,7 +420,6 @@ export default function QuizCarousel({
     <div className="flex flex-col items-center justify-center h-full w-full font-code gap-8 px-2 sm:px-[5vw] md:px-[10vw]">
       {!started ? (
         <>
-          {console.log(supabase)}
           <div className="text-center">
             <div className="text-2xl font-bold text-white">
               {data.levels[currentLevel].title}
