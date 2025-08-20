@@ -7,6 +7,7 @@ import React, {
   useMemo,
 } from "react";
 import data from "./data.json";
+import supabase from "@/supabaseClient";
 
 // Types for quiz data structure
 type Question = {
@@ -418,10 +419,11 @@ export default function QuizCarousel({
     <div className="flex flex-col items-center justify-center h-full w-full font-code gap-8 px-2 sm:px-[5vw] md:px-[10vw]">
       {!started ? (
         <>
+          {console.log(supabase)}
           <div className="text-center">
-            <text className="text-2xl font-bold text-white">
+            <div className="text-2xl font-bold text-white">
               {data.levels[currentLevel].title}
-            </text>
+            </div>
             <div className="flex items-center justify-center gap-4 mt-8">
               <button
                 className={`px-4 py-2 rounded font-code text-lg ${
