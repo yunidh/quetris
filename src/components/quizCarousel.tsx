@@ -6,8 +6,6 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import data from "./data.json";
-import supabase from "@/supabaseClient";
 
 // Types for quiz data structure
 type Question = {
@@ -44,7 +42,7 @@ const SWIPE_THRESHOLD = 50;
 
 // Props interface for external data integration
 interface QuizCarouselProps {
-  quizData?: QuizData; // Optional external data
+  quizData: QuizData; // Required Supabase data
   onLevelComplete?: (levelId: number, score: number) => void; // Callback for level completion
   onQuestionAnswer?: (questionId: number, correct: boolean) => void; // Callback for question answers
   isLoading?: boolean; // External loading state
@@ -55,10 +53,18 @@ export default function QuizCarousel({
   onLevelComplete,
   onQuestionAnswer,
   isLoading: externalLoading = false,
-}: QuizCarouselProps = {}) {
-  console.log(supabase);
-  // Use external data if provided, otherwise fall back to local data
-  const gameData = useMemo(() => quizData || (data as QuizData), [quizData]);
+}: QuizCarouselProps) {
+  // Validate data and use directly (no need for memoization of simple prop)
+  if (!quizData?.levels?.length) {
+    return (
+      <div className="flex flex-col items-center justify-center text-center">
+        <p className="text-red-400 mb-4">No quiz data available</p>
+        <p className="text-white text-sm">
+          Please check your database connection
+        </p>
+      </div>
+    );
+  }
 
   const [started, setStarted] = useState(false);
   const [currentLevel, setCurrentLevel] = useState(0);
@@ -73,6 +79,7 @@ export default function QuizCarousel({
   const [canStartFalling, setCanStartFalling] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [score, setScore] = useState(0);
+  const [questionsAttempted, setQuestionsAttempted] = useState(0);
 
   // Refs for performance optimization
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -88,23 +95,59 @@ export default function QuizCarousel({
 
   // Current level and question data with null safety
   const currentLevelData = useMemo(() => {
-    return gameData.levels[currentLevel] || null;
-  }, [gameData, currentLevel]);
+    return quizData.levels[currentLevel] || null;
+  }, [quizData, currentLevel]);
 
   const currentQuestion = useMemo(() => {
     return currentLevelData?.questions[questionIdx] || null;
   }, [currentLevelData, questionIdx]);
 
   // Memoize constants
-  const maxLevel = useMemo(() => gameData.levels.length - 1, [gameData]);
+  const maxLevel = useMemo(() => quizData.levels.length - 1, [quizData]);
 
-  // Handle external loading state
-  const isActuallyLoading = isLoading || externalLoading;
+  // Single comprehensive reset function
+  const resetGame = useCallback((keepScore = false) => {
+    setQuestionIdx(0);
+    setRetry(false);
+    setCaught(null);
+    setCatcherCol(1);
+    catcherColRef.current = 1;
+    setFallingOptions([]);
+    setIsLoading(false);
+    setShowGrid(false);
+    setGridAnimating(false);
+    setCanStartFalling(false);
+    setCompleted(false);
+
+    if (!keepScore) {
+      setScore(0);
+      setQuestionsAttempted(0);
+    }
+
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    if (cleanupIntervalRef.current) clearInterval(cleanupIntervalRef.current);
+    if (animationTimeoutRef.current) clearTimeout(animationTimeoutRef.current);
+  }, []);
+
+  // Reset only falling options (for question changes)
+  const resetFallingOptions = useCallback(() => {
+    setFallingOptions([]);
+    setCaught(null);
+    setRetry(false);
+    setCatcherCol(1);
+    catcherColRef.current = 1;
+    setCanStartFalling(false);
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    if (cleanupIntervalRef.current) clearInterval(cleanupIntervalRef.current);
+  }, []);
 
   // Handle correct/incorrect answers with callback
   const handleAnswer = useCallback(
     (correct: boolean) => {
       if (!currentQuestion) return;
+
+      // Track that a question was attempted
+      setQuestionsAttempted((prev) => prev + 1);
 
       // Call external callback if provided
       onQuestionAnswer?.(currentQuestion.id, correct);
@@ -122,8 +165,9 @@ export default function QuizCarousel({
           resetFallingOptions();
         }
       } else {
-        setRetry(true);
-        resetFallingOptions();
+        // Wrong answer - go back to level select and reset everything
+        setStarted(false);
+        resetGame(true); // Keep score to show on level select
       }
     },
     [
@@ -134,40 +178,10 @@ export default function QuizCarousel({
       score,
       onQuestionAnswer,
       onLevelComplete,
+      resetGame,
+      resetFallingOptions,
     ]
   );
-
-  // Clean reset function
-  const resetGame = useCallback(() => {
-    setQuestionIdx(0);
-    setRetry(false);
-    setCaught(null);
-    setCatcherCol(1);
-    catcherColRef.current = 1;
-    setFallingOptions([]);
-    setIsLoading(false);
-    setShowGrid(false);
-    setGridAnimating(false);
-    setCanStartFalling(false);
-    setCompleted(false);
-    setScore(0);
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    if (cleanupIntervalRef.current) clearInterval(cleanupIntervalRef.current);
-    if (animationTimeoutRef.current) clearTimeout(animationTimeoutRef.current);
-  }, []);
-
-  // Reset only falling options (for question changes, not full reset)
-  const resetFallingOptions = useCallback(() => {
-    setFallingOptions([]);
-    setCaught(null);
-    setRetry(false);
-    setCatcherCol(1);
-    catcherColRef.current = 1;
-    setCanStartFalling(false);
-    // Keep showGrid and gridAnimating as they are - don't reset them
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    if (cleanupIntervalRef.current) clearInterval(cleanupIntervalRef.current);
-  }, []);
 
   // Shuffle array utility
   const shuffle = (array: number[]) => {
@@ -187,12 +201,14 @@ export default function QuizCarousel({
     const availableColumns = shuffle(
       Array.from({ length: GRID_COLS }, (_, i) => i)
     );
-    return data.levels[levelIdx].questions[qIdx].options.map((opt, index) => ({
-      text: opt,
-      col: availableColumns[index],
-      row: 0,
-      key: `${levelIdx}-${qIdx}-${opt}-${Date.now()}-${index}`,
-    }));
+    return quizData.levels[levelIdx].questions[qIdx].options.map(
+      (opt: string, index: number) => ({
+        text: opt,
+        col: availableColumns[index],
+        row: 0,
+        key: `${levelIdx}-${qIdx}-${opt}-${Date.now()}-${index}`,
+      })
+    );
   };
 
   // Unified function to load options with different behaviors
@@ -354,7 +370,7 @@ export default function QuizCarousel({
   // Game progression functions
   const nextQuestion = useCallback(async () => {
     const nextIdx = questionIdx + 1;
-    if (nextIdx < data.levels[currentLevel].questions.length) {
+    if (nextIdx < quizData.levels[currentLevel].questions.length) {
       setQuestionIdx(nextIdx);
       resetFallingOptions();
       await loadOptions(nextIdx, currentLevel);
@@ -371,9 +387,10 @@ export default function QuizCarousel({
   }, [resetGame]);
 
   const retryQuestion = useCallback(async () => {
-    resetFallingOptions();
-    await loadOptions(questionIdx, currentLevel);
-  }, [questionIdx, currentLevel, resetFallingOptions]);
+    // Reset the entire quiz and go back to level select (keeping score)
+    setStarted(false);
+    resetGame(true); // Keep score to show on level select
+  }, [resetGame]);
 
   // Keyboard controls
   useEffect(() => {
@@ -422,8 +439,23 @@ export default function QuizCarousel({
         <>
           <div className="text-center">
             <div className="text-2xl font-bold text-white">
-              {data.levels[currentLevel].title}
+              {quizData.levels[currentLevel].title}
             </div>
+
+            {/* Show score if questions were attempted */}
+            {questionsAttempted > 0 && (
+              <div className="mt-4 p-3 bg-gray-800 rounded-lg border border-gray-600">
+                <div className="text-white text-lg">
+                  Last Attempt: {score} / {questionsAttempted} questions correct
+                </div>
+                {score < questionsAttempted && (
+                  <div className="text-red-400 text-sm mt-1">
+                    Wrong answer! Try again to complete the level.
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex items-center justify-center gap-4 mt-8">
               <button
                 className={`px-4 py-2 rounded font-code text-lg ${
@@ -438,7 +470,7 @@ export default function QuizCarousel({
               </button>
 
               <span className="text-white text-lg">
-                {currentLevel + 1} / {data.levels.length}
+                {currentLevel + 1} / {quizData.levels.length}
               </span>
 
               <button
@@ -469,10 +501,13 @@ export default function QuizCarousel({
             <h2 className="text-4xl font-bold text-green-400 mb-4">
               Completed!
             </h2>
-            <p className="text-white text-lg mb-6">
-              You've finished all questions in {data.levels[currentLevel].title}
-              !
+            <p className="text-white text-lg mb-4">
+              You've finished all questions in{" "}
+              {quizData.levels[currentLevel].title}!
             </p>
+            <div className="text-white text-xl mb-6 font-bold">
+              Final Score: {score} / {questionsAttempted} questions correct
+            </div>
           </div>
 
           <button
@@ -484,8 +519,14 @@ export default function QuizCarousel({
         </div>
       ) : (
         <div className="flex flex-col items-center w-full">
+          {/* Progress indicator */}
+          <div className="mb-2 text-white text-lg">
+            Question {questionIdx + 1} of{" "}
+            {currentLevelData?.questions.length || 0}
+          </div>
+
           <div className="mb-4 text-3xl font-bold text-center font-code text-white">
-            {data.levels[currentLevel].questions[questionIdx].question}
+            {quizData.levels[currentLevel].questions[questionIdx].question}
           </div>
 
           {isLoading ? (
@@ -602,7 +643,7 @@ export default function QuizCarousel({
                   onClick={retryQuestion}
                   disabled={isLoading}
                 >
-                  {isLoading ? "Loading..." : "Retry"}
+                  {isLoading ? "Loading..." : "Restart"}
                 </button>
               )}
               {caught && caught.correct && (
@@ -636,8 +677,8 @@ export default function QuizCarousel({
             Use <span className="font-bold">← →</span> or click to move the
             catcher | Press <span className="font-bold">↓</span> or swipe{" "}
             <span className="font-bold">Down</span> to drop options | Press{" "}
-            <span className="font-bold">Enter</span> to play/retry/next | Press{" "}
-            <span className="font-bold">Esc</span> to quit
+            <span className="font-bold">Enter</span> to play/restart/next |
+            Press <span className="font-bold">Esc</span> to quit
           </>
         )}
       </div>
