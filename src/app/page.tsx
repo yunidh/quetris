@@ -1,64 +1,99 @@
+"use client";
 import QuizCarousel from "@/components/quizCarousel";
 import { fetchQuizData, QuizData } from "@/lib/quizService";
-import { Suspense } from "react";
+import { useEffect, useState, useCallback } from "react";
 
-// Loading component for better UX
-function QuizLoading() {
+// Combined state type for cleaner state management
+type AppState = {
+  data: QuizData | null;
+  loading: boolean;
+  error: string | null;
+};
+
+// Reusable centered container for loading and error states
+function CenteredContainer({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-col items-center justify-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mb-4"></div>
-      <p className="text-white">Loading quiz data...</p>
+    <div className="flex flex-col items-center justify-center text-center">
+      {children}
     </div>
   );
 }
 
-// Error component for error handling
-function QuizError({ error }: { error: string }) {
+// Loading component
+function QuizLoading() {
   return (
-    <div className="flex flex-col items-center justify-center text-center">
+    <CenteredContainer>
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mb-4" />
+      <p className="text-white">Loading quiz data...</p>
+    </CenteredContainer>
+  );
+}
+
+// Error component with retry functionality
+function QuizError({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return (
+    <CenteredContainer>
       <p className="text-red-400 mb-4">Failed to load quiz data</p>
-      <p className="text-white text-sm">{error}</p>
+      <p className="text-white text-sm mb-4">{error}</p>
       <button
-        onClick={() => window.location.reload()}
-        className="mt-4 bg-white text-black px-4 py-2 rounded hover:bg-gray-200"
+        onClick={onRetry}
+        className="bg-white text-black px-4 py-2 rounded hover:bg-gray-200 transition-colors"
       >
         Retry
       </button>
-    </div>
+    </CenteredContainer>
   );
 }
 
-// Main quiz component that fetches data
-async function QuizWithData() {
-  try {
-    const quizData: QuizData = await fetchQuizData();
-
-    // Validate that we have data
-    if (!quizData.levels || quizData.levels.length === 0) {
-      throw new Error("No quiz levels found in database");
-    }
-
-    return <QuizCarousel quizData={quizData} />;
-  } catch (error) {
-    console.error("Error loading quiz data:", error);
-    return (
-      <QuizError
-        error={error instanceof Error ? error.message : "Unknown error"}
-      />
-    );
-  }
-}
-
 export default function Home() {
+  const [state, setState] = useState<AppState>({
+    data: null,
+    loading: true,
+    error: null,
+  });
+
+  const loadData = useCallback(async () => {
+    setState((prev) => ({ ...prev, loading: true, error: null }));
+
+    try {
+      const data = await fetchQuizData();
+
+      if (!data.levels?.length) {
+        throw new Error(
+          "No quiz levels found in database. Please check your Supabase setup."
+        );
+      }
+
+      setState({ data, loading: false, error: null });
+    } catch (err) {
+      setState({
+        data: null,
+        loading: false,
+        error: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const renderContent = () => {
+    if (state.loading) return <QuizLoading />;
+    if (state.error)
+      return <QuizError error={state.error} onRetry={loadData} />;
+    if (!state.data)
+      return <QuizError error="No data available" onRetry={loadData} />;
+    return <QuizCarousel quizData={state.data} />;
+  };
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-black">
       <h1 className="font-doto font-extrabold text-7xl text-center mt-4 text-white absolute top-0">
         Quetris
       </h1>
       <div className="flex-1 flex items-center justify-center w-full">
-        <Suspense fallback={<QuizLoading />}>
-          <QuizWithData />
-        </Suspense>
+        {renderContent()}
       </div>
     </div>
   );
