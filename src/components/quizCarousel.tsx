@@ -37,9 +37,8 @@ type CaughtState = { correct: boolean; option: string } | null;
 
 // Configuration constants
 const GRID_COLS = 4;
-const GRID_ROWS = 8;
-const FALL_INTERVAL = 400;
-const ANIMATION_DURATION = 500;
+const GRID_ROWS = 15;
+const FALL_INTERVAL = 300;
 const SWIPE_THRESHOLD = 50;
 
 // Props interface for external data integration
@@ -291,7 +290,7 @@ export default function QuizCarousel({
       const deltaY = touchEndY - touchStartY.current;
 
       // Swipe down (positive deltaY) with minimum distance
-      if (deltaY > 50) {
+      if (deltaY > SWIPE_THRESHOLD) {
         dropOptions();
       }
 
@@ -416,15 +415,14 @@ export default function QuizCarousel({
 
   // Render grid
   return (
-    <div className="flex flex-col items-center justify-center h-full w-full font-code px-2 sm:px-[5vw] md:px-[10vw]">
+    <div className="flex flex-col items-center justify-center h-full w-full font-code gap-8 px-2 sm:px-[5vw] md:px-[10vw]">
       {!started ? (
         <>
-          <div className="mb-8 text-center">
-            <h2 className="text-4xl font-bold text-white mb-2">
+          <div className="text-center">
+            <text className="text-2xl font-bold text-white">
               {data.levels[currentLevel].title}
-            </h2>
-
-            <div className="flex items-center justify-center gap-4 mb-6">
+            </text>
+            <div className="flex items-center justify-center gap-4 mt-8">
               <button
                 className={`px-4 py-2 rounded font-code text-lg ${
                   currentLevel === 0
@@ -465,7 +463,7 @@ export default function QuizCarousel({
         </>
       ) : completed ? (
         <div className="flex flex-col items-center w-full">
-          <div className="mb-8 text-center">
+          <div className="text-center">
             <h2 className="text-4xl font-bold text-green-400 mb-4">
               Completed!
             </h2>
@@ -620,7 +618,7 @@ export default function QuizCarousel({
         </div>
       )}
 
-      <div className="mt-6 text-white text-xs font-code text-center">
+      <div className=" text-white text-xs font-code text-center">
         {!started ? (
           <>
             Use <span className="font-bold">← →</span> arrows to browse levels |
