@@ -38,7 +38,7 @@ type CaughtState = { correct: boolean; option: string } | null;
 const GRID_COLS = 4;
 const GRID_ROWS = 15;
 const FALL_INTERVAL = 300;
-const SWIPE_THRESHOLD = 50;
+const SWIPE_THRESHOLD = 30; // Reduced for better mobile sensitivity
 
 // Props interface for external data integration
 interface QuizCarouselProps {
@@ -242,7 +242,16 @@ export default function QuizCarousel({ quizData }: QuizCarouselProps) {
 
   // Touch event handlers for mobile swipe
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    // Prevent default to avoid conflicts with scrolling
+    e.preventDefault();
     touchStartY.current = e.touches[0].clientY;
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    // Prevent scrolling while swiping in game area
+    if (touchStartY.current !== null) {
+      e.preventDefault();
+    }
   }, []);
 
   const handleTouchEnd = useCallback(
@@ -254,6 +263,7 @@ export default function QuizCarousel({ quizData }: QuizCarouselProps) {
 
       // Swipe down (positive deltaY) with minimum distance
       if (deltaY > SWIPE_THRESHOLD) {
+        e.preventDefault();
         dropOptions();
       }
 
@@ -514,8 +524,10 @@ export default function QuizCarousel({ quizData }: QuizCarouselProps) {
                 animation: gridAnimating
                   ? "slideDown 0.5s ease-out forwards"
                   : undefined,
+                touchAction: "none", // Prevent default touch behaviors
               }}
               onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
             >
               {/* Falling options */}
@@ -645,11 +657,17 @@ export default function QuizCarousel({ quizData }: QuizCarouselProps) {
           </>
         ) : (
           <>
-            Use <span className="font-bold">← →</span> or click to move the
-            catcher | Press <span className="font-bold">↓</span> or swipe{" "}
-            <span className="font-bold">Down</span> to drop options | Press{" "}
-            <span className="font-bold">Enter</span> to play/restart/next |
-            Press <span className="font-bold">Esc</span> to quit
+            <span className="hidden sm:inline">
+              Use <span className="font-bold">← →</span> or click to move the
+              catcher | Press <span className="font-bold">↓</span> or swipe{" "}
+              <span className="font-bold">Down</span> to drop options | Press{" "}
+              <span className="font-bold">Enter</span> to play/restart/next |
+              Press <span className="font-bold">Esc</span> to quit
+            </span>
+            <span className="sm:hidden">
+              <span className="font-bold">Tap</span> to move catcher |{" "}
+              <span className="font-bold">Swipe Down</span> to drop options fast
+            </span>
           </>
         )}
       </div>
