@@ -1,4 +1,3 @@
-# quetris
 quiz-tetris, a web-app that uses tetris style gameplay for interactive quizzes  
 
 ## [quetris.vercel.app](https://quetris.vercel.app/)
